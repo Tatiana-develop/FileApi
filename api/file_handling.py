@@ -22,28 +22,28 @@ class File:
             return None
 
     def save(self, file, file_size=0):
-        try:
-            file_hash = self.get_filename(file.filename)
-            file_hash_path = self.get_full_path(file_hash)
-            dir_path = os.path.dirname(file_hash_path)
+        file_hash = self.get_filename(file.filename)
+        file_hash_path = self.get_full_path(file_hash)
+        dir_path = os.path.dirname(file_hash_path)
 
-            store_size = os.path.getsize(self.__store_path)
-            current_size = store_size + file_size
+        if os.path.exists(file_hash_path):
+            raise FileExistsError()
 
-            if self.__max_dir_size > current_size:
-                if not os.path.exists(dir_path):
-                    os.mkdir(dir_path)
+        store_size = os.path.getsize(self.__store_path)
+        current_size = store_size + file_size
 
-                with open(file_hash_path, 'wb') as fw:
-                    file.save(fw, buffer_size=16384)
-                    file.close()
-                return file_hash
+        if self.__max_dir_size < current_size:
+            app.logger.error('No space in store folder')
+            raise MemoryError()
 
-            else:
-                raise BaseException('No space in store folder')
+        if not os.path.exists(dir_path):
+            os.mkdir(dir_path)
 
-        except BaseException as e:
-            app.logger.warning(e)
+        with open(file_hash_path, 'wb') as fw:
+            file.save(fw, buffer_size=16384)
+            file.close()
+
+        return file_hash
 
     def remove(self, file_hash):
         try:
@@ -55,12 +55,12 @@ class File:
             if not files:
                 os.rmdir(file_dir)
 
-            return True
         except FileNotFoundError as e:
-            app.logger.error(e)
+            raise FileNotFoundError()
+
         except BaseException as e:
             app.logger.error(e)
-            return False
+            raise BaseException()
 
     def get_hash(self, file_name):
         return hashlib.md5(file_name.encode('utf-8')).hexdigest()
