@@ -1,11 +1,14 @@
 import hashlib
 import os
 
-from settings import STORE_PATH, MAX_DIR_SIZE, SYMBOL_COUNT_SEPARATE
+from datetime import datetime
+
+from settings import STORE_PATH, MAX_DIR_SIZE, SYMBOL_COUNT_SEPARATE, BUF_SIZE
 from api import app
 
 
 class File:
+    __buf_size = BUF_SIZE
     __symbol_count_separate = SYMBOL_COUNT_SEPARATE
     __store_path = STORE_PATH
     __max_dir_size = MAX_DIR_SIZE
@@ -22,28 +25,46 @@ class File:
             return None
 
     def save(self, file, file_size=0):
-        file_hash = self.get_filename(file.filename)
-        file_hash_path = self.get_full_path(file_hash)
-        dir_path = os.path.dirname(file_hash_path)
+        try:
+            name_temp_file = self.get_hash(file.filename + str(datetime.now()))
+            md5 = hashlib.md5()
 
-        if os.path.exists(file_hash_path):
-            raise FileExistsError()
+            fw = open(name_temp_file, 'wb')
+            while True:
+                data = file.read(self.__buf_size)
 
-        store_size = os.path.getsize(self.__store_path)
-        current_size = store_size + file_size
+                if not data:
+                    break
 
-        if self.__max_dir_size < current_size:
-            app.logger.error('No space in store folder')
-            raise MemoryError()
+                fw.write(data)
+                md5.update(data)
 
-        if not os.path.exists(dir_path):
-            os.mkdir(dir_path)
-
-        with open(file_hash_path, 'wb') as fw:
-            file.save(fw, buffer_size=16384)
             file.close()
+            fw.close()
 
-        return file_hash
+            file_hash = md5.hexdigest()
+            file_hash_path = self.get_full_path(file_hash)
+            dir_path = os.path.dirname(file_hash_path)
+
+            if os.path.exists(file_hash_path):
+                raise FileExistsError()
+
+            store_size = os.path.getsize(self.__store_path)
+            current_size = store_size + file_size
+
+            if self.__max_dir_size < current_size:
+                raise MemoryError('No space in store folder')
+
+            if not os.path.exists(dir_path):
+                os.mkdir(dir_path)
+
+            os.rename(name_temp_file, file_hash_path)
+
+            return file_hash
+
+        except BaseException as e:
+            os.remove(name_temp_file)
+            raise e
 
     def remove(self, file_hash):
         try:
@@ -64,12 +85,6 @@ class File:
 
     def get_hash(self, file_name):
         return hashlib.md5(file_name.encode('utf-8')).hexdigest()
-
-    def get_filename(self, filename):
-        filenamelist = filename.split('.')
-        name_hash = self.get_hash(filenamelist[0])
-        filename = '.'.join([name_hash, filenamelist[1]])
-        return filename
 
     def get_full_path(self, hash_name):
         return os.path.join(self.__store_path, hash_name[:self.__symbol_count_separate], hash_name)
