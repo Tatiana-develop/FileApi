@@ -25,6 +25,12 @@ class File:
             return None
 
     def save(self, file, file_size=0):
+        store_size = os.path.getsize(self.__store_path)
+        current_size = store_size + file_size
+
+        if self.__max_dir_size < current_size:
+            raise MemoryError('No space in store folder')
+
         try:
             name_temp_file = self.get_hash(file.filename + str(datetime.now()))
             md5 = hashlib.md5()
@@ -44,16 +50,11 @@ class File:
 
             file_hash = md5.hexdigest()
             file_hash_path = self.get_full_path(file_hash)
-            dir_path = os.path.dirname(file_hash_path)
 
             if os.path.exists(file_hash_path):
                 raise FileExistsError()
 
-            store_size = os.path.getsize(self.__store_path)
-            current_size = store_size + file_size
-
-            if self.__max_dir_size < current_size:
-                raise MemoryError('No space in store folder')
+            dir_path = os.path.dirname(file_hash_path)
 
             if not os.path.exists(dir_path):
                 os.mkdir(dir_path)
@@ -63,7 +64,8 @@ class File:
             return file_hash
 
         except BaseException as e:
-            os.remove(name_temp_file)
+            if name_temp_file and os.path.exists(name_temp_file):
+                os.remove(name_temp_file)
             raise e
 
     def remove(self, file_hash):
